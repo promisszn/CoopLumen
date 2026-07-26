@@ -135,5 +135,38 @@ describeIf('communities schema', () => {
 
     expect(indexes).toContain('idx_communities_active_created_at');
     expect(indexes).toContain('idx_communities_asset');
+    // #047: GIN full-text search index, used by GET /communities/search
+    expect(indexes).toContain('idx_communities_fts');
+  });
+
+  // #047: GIN full-text search index on communities(name, description)
+  it('matches a community by name or description via to_tsvector', async () => {
+    await insert({ name: 'FullTextDAO', description: 'a cooperative for artisans' });
+
+    const byName = await client.query(
+      `SELECT 1 FROM communities
+       WHERE to_tsvector('english', name || ' ' || COALESCE(description, ''))
+             @@ plainto_tsquery('english', 'FullTextDAO')`
+    );
+    expect(byName.rowCount).toBe(1);
+
+    const byDescription = await client.query(
+      `SELECT 1 FROM communities
+       WHERE to_tsvector('english', name || ' ' || COALESCE(description, ''))
+             @@ plainto_tsquery('english', 'artisans')`
+    );
+    expect(byDescription.rowCount).toBe(1);
+  });
+
+  it('uses the GIN index to serve the full-text search query', async () => {
+    await insert({ name: 'PlannerDAO' });
+
+    const { rows } = await pool.query<{ 'QUERY PLAN': string }>(
+      `EXPLAIN SELECT 1 FROM communities
+       WHERE to_tsvector('english', name || ' ' || COALESCE(description, ''))
+             @@ plainto_tsquery('english', 'PlannerDAO')`
+    );
+    const plan = rows.map((r) => r['QUERY PLAN']).join('\n');
+    expect(plan).toMatch(/idx_communities_fts/);
   });
 });
