@@ -114,6 +114,32 @@ describeIf('Community CRUD (integration)', () => {
     expect(list.body.data[0].stellar_address).toBe(member);
   });
 
+  it('soft-removes a member and hides them from the list', async () => {
+    const del = await request(app).delete(`/api/v1/communities/${communityId}/members/${member}`);
+    expect(del.status).toBe(200);
+    expect(del.body.data.removed).toBe(true);
+
+    const list = await request(app).get(`/api/v1/communities/${communityId}/members`);
+    expect(list.status).toBe(200);
+    expect(list.body.meta.total).toBe(0);
+
+    const getOne = await request(app).get(
+      `/api/v1/communities/${communityId}/members/${member}`
+    );
+    expect(getOne.status).toBe(404);
+  });
+
+  it('re-adding a removed member clears the soft delete', async () => {
+    const add = await request(app)
+      .post(`/api/v1/communities/${communityId}/members`)
+      .send({ stellarAddress: member, role: 'member' });
+    expect(add.status).toBe(201);
+
+    const list = await request(app).get(`/api/v1/communities/${communityId}/members`);
+    expect(list.status).toBe(200);
+    expect(list.body.meta.total).toBe(1);
+  });
+
   it('soft-deletes the community and hides it from reads', async () => {
     const del = await request(app).delete(`/api/v1/communities/${communityId}`);
     expect(del.status).toBe(200);

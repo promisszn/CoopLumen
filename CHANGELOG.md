@@ -11,6 +11,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Integration test coverage for member soft-delete (#045): schema-level `deleted_at` checks in `members.schema.integration.test.ts`, plus an HTTP round-trip in `communities.integration.test.ts` covering `DELETE /api/v1/communities/:id/members/:address` — removal, 404 on re-fetch, and the soft-delete clearing on re-add
 - Migration 017: members table integrity — Stellar address format constraint, `updated_at` column and trigger, and indexes covering the cross-community and live-member lookup paths
 - Integration tests for the members schema: FK cascade, role and address constraints, composite-key uniqueness, and `updated_at` behaviour
 - Migration `002_create_communities.sql`: canonical `communities` schema — full column set, CHECK constraints mirroring the API validation (name length, description length, Stellar asset code and issuer formats, avatar URL length), a partial index for the active-community listing, and an index on `(asset_code, asset_issuer)`

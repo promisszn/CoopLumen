@@ -128,4 +128,54 @@ describeIf('members schema (integration)', () => {
     // Superseded by the primary key's leading column.
     expect(indexes).not.toContain('idx_members_community');
   });
+
+  // #045: soft-delete on members
+  it('has a nullable deleted_at column for soft deletes', async () => {
+    const { rows } = await client.query<{ is_nullable: string }>(
+      `SELECT is_nullable FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'members' AND column_name = 'deleted_at'`
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].is_nullable).toBe('YES');
+  });
+
+  it('excludes a soft-deleted member from the active-members query', async () => {
+    const community = await createCommunity(client, { name: 'SoftDeleteDAO' });
+    await createMember(client, community.id, VALID_ADDRESS);
+
+    await client.query(
+      'UPDATE members SET deleted_at = NOW() WHERE community_id = $1 AND stellar_address = $2',
+      [community.id, VALID_ADDRESS]
+    );
+
+    const { rows } = await client.query(
+      'SELECT 1 FROM members WHERE community_id = $1 AND deleted_at IS NULL',
+      [community.id]
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it('clears deleted_at when a removed member is re-added', async () => {
+    const community = await createCommunity(client, { name: 'RejoinDAO' });
+    await createMember(client, community.id, VALID_ADDRESS);
+    await client.query(
+      'UPDATE members SET deleted_at = NOW() WHERE community_id = $1 AND stellar_address = $2',
+      [community.id, VALID_ADDRESS]
+    );
+
+    // Mirrors the ON CONFLICT clause in POST /api/v1/communities/:id/members
+    await client.query(
+      `INSERT INTO members (community_id, stellar_address, role)
+       VALUES ($1, $2, 'member')
+       ON CONFLICT (community_id, stellar_address)
+       DO UPDATE SET role = EXCLUDED.role, deleted_at = NULL`,
+      [community.id, VALID_ADDRESS]
+    );
+
+    const { rows } = await client.query<{ deleted_at: Date | null }>(
+      'SELECT deleted_at FROM members WHERE community_id = $1 AND stellar_address = $2',
+      [community.id, VALID_ADDRESS]
+    );
+    expect(rows[0].deleted_at).toBeNull();
+  });
 });
